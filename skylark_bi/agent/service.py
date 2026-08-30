@@ -52,6 +52,8 @@ class Answer:
     clarifying_question: str | None = None
     #: Set when the whole attempt failed.
     error: str | None = None
+    #: Non-fatal notices worth showing - currently, degradation to keyword/plain mode.
+    notes: list[str] = field(default_factory=list)
 
     @property
     def needs_clarification(self) -> bool:
@@ -86,6 +88,10 @@ class BIService:
         self._settings = settings
         self._llm = llm
         self._cache: LoadedData | None = None
+        #: Answers keyed by (question, data fetch time). The LLM free tier is small and
+        #: a demo repeats questions; re-deriving an identical answer would spend quota
+        #: for no benefit. Keyed on fetch time so a data refresh invalidates it.
+        self._answers: dict[tuple[str, str], Answer] = {}
 
     # -- data --------------------------------------------------------------------
 
@@ -199,7 +205,13 @@ class BIService:
         except DataUnavailableError as exc:
             return Answer(question=question, text="", error=exc.user_message)
 
-        intent = plan_intent(question, self._llm)
+        cache_key = (question.lower(), str(data.dataset.fetched_at))
+        cached = self._answers.get(cache_key)
+        if cached is not None:
+            return cached
+
+        notes: list[str] = []
+        intent = plan_intent(question, self._llm, notes)
         plan = resolve(
             intent,
             data.dataset,
@@ -208,15 +220,23 @@ class BIService:
         )
 
         if plan.needs_clarification:
+            # Not cached: a clarification is a prompt to the user, not an answer.
             return Answer(
                 question=question,
                 text=plan.clarifying_question or "",
                 clarifying_question=plan.clarifying_question,
+                notes=notes,
             )
 
         result = execute(plan, data.dataset, data.quality)
-        return Answer(
+        answer = Answer(
             question=question,
-            text=respond(question, result, self._llm),
+            text=respond(question, result, self._llm, notes),
             result=result,
+            notes=notes,
         )
+
+        if len(self._answers) > 64:
+            self._answers.clear()
+        self._answers[cache_key] = answer
+        return answer

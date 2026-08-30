@@ -25,7 +25,7 @@ ALLOWED_NUMERIC_CONSTANTS = {
     0.15,                                                     # concentration threshold
     15, 20, 24, 25, 30, 40, 45, 60, 45.0,                    # timeouts, retries, limits
     64, 120, 200, 400, 401, 403, 429, 500, 800, 900,         # HTTP, budgets, lengths
-    1024, 2048, 4096, 1200, 1e5, 1e7, 3, 2.0,
+    1024, 2048, 4096, 8192, 1200, 1e5, 1e7, 3, 2.0,
 }
 
 

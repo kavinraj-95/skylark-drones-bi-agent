@@ -31,8 +31,8 @@ T = TypeVar("T", bound=BaseModel)
 #: against this same budget, so a limit sized to the visible answer truncates it
 #: mid-sentence. Thinking is disabled below for these calls, and the headroom stays as
 #: insurance against a model that ignores that.
-_STRUCTURED_MAX_TOKENS = 2048
-_PROSE_MAX_TOKENS = 4096
+_STRUCTURED_MAX_TOKENS = 4096
+_PROSE_MAX_TOKENS = 8192
 
 
 class LLMError(RuntimeError):
@@ -55,6 +55,11 @@ class LLMClient:
     def __init__(self, config: LLMConfig):
         self._config = config
         self._client = None
+        #: Whether this model accepts an explicit thinking budget. Discovered on first
+        #: use rather than hardcoded: Gemini 2.5 accepts `thinking_budget=0`, while the
+        #: 3.x family rejects it outright with INVALID_ARGUMENT. Pinning a model name
+        #: here would break the next time the `-latest` alias moves.
+        self._supports_thinking_budget: bool | None = None
 
     # -- provider setup ----------------------------------------------------------
 
@@ -128,25 +133,47 @@ class LLMClient:
             "max_output_tokens": max_tokens,
         }
 
-        # Neither call needs extended reasoning - the analysis is already done, and
-        # thinking tokens would eat the output budget. Guarded because the option
-        # only exists on models that support it.
-        try:
-            config["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
-        except (AttributeError, TypeError):  # pragma: no cover - SDK/model dependent
-            pass
         if schema is not None:
             config["response_mime_type"] = "application/json"
             config["response_schema"] = schema
 
-        try:
-            response = self._gemini().models.generate_content(
-                model=self._config.model,
-                contents=prompt,
-                config=types.GenerateContentConfig(**config),
-            )
-        except Exception as exc:  # provider SDKs raise a wide variety of types
-            raise LLMError(f"Gemini request failed: {exc}") from exc
+        # Neither call needs extended reasoning - the analysis is already done, and on
+        # models that charge thinking against the output budget it truncates answers.
+        # Models that reject the option are detected on first use and remembered.
+        attempts: list[dict] = []
+        if self._supports_thinking_budget is not False:
+            try:
+                attempts.append(
+                    {**config, "thinking_config": types.ThinkingConfig(thinking_budget=0)}
+                )
+            except (AttributeError, TypeError):  # pragma: no cover - old SDK
+                self._supports_thinking_budget = False
+        if self._supports_thinking_budget is not True:
+            attempts.append(config)
+
+        last: Exception | None = None
+        for index, attempt in enumerate(attempts):
+            try:
+                response = self._gemini().models.generate_content(
+                    model=self._config.model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(**attempt),
+                )
+            except Exception as exc:  # provider SDKs raise a wide variety of types
+                last = exc
+                is_first = index == 0 and "thinking_config" in attempt
+                if is_first and "INVALID_ARGUMENT" in str(exc):
+                    # This model does not accept a thinking budget. Retry without it
+                    # and stop offering it for the rest of this client's life.
+                    self._supports_thinking_budget = False
+                    continue
+                raise LLMError(f"Gemini request failed: {exc}") from exc
+            else:
+                if "thinking_config" in attempt:
+                    self._supports_thinking_budget = True
+                break
+        else:
+            raise LLMError(f"Gemini request failed: {last}") from last
 
         text = (response.text or "").strip()
         if not text:

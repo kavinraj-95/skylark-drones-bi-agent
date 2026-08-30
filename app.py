@@ -235,6 +235,8 @@ def main() -> None:
                 elif answer.needs_clarification:
                     st.info(answer.clarifying_question)
                 else:
+                    for note in answer.notes:
+                        st.warning(note)
                     render_metric_tiles(answer)
                     st.markdown(answer.text)
                     render_analysis_panel(answer)
@@ -254,6 +256,8 @@ def main() -> None:
                 elif answer.needs_clarification:
                     st.info(answer.clarifying_question)
                 else:
+                    for note in answer.notes:
+                        st.warning(note)
                     render_metric_tiles(answer)
                     st.markdown(answer.text)
                     render_analysis_panel(answer)

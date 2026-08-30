@@ -151,7 +151,7 @@ uv run streamlit run app.py
 | `MONDAY_API_VERSION` | | `2026-07` | Pinned; monday rotates quarterly |
 | `LLM_PROVIDER` | | `gemini` | or `anthropic` |
 | `GEMINI_API_KEY` | ✅¹ | — | Free tier is sufficient |
-| `GEMINI_MODEL` | | `gemini-2.5-flash` | |
+| `GEMINI_MODEL` | | `gemini-flash-lite-latest` | |
 | `ANTHROPIC_API_KEY` | ¹ | — | Platform key, **not** a Pro subscription |
 | `DATA_TTL_SECONDS` | | `900` | Reuse window before re-querying monday |
 | `FISCAL_YEAR_START_MONTH` | | `4` | April — Indian FY, evidenced by `SDPL/FY25-26` invoice numbers |

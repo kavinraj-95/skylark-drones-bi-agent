@@ -115,6 +115,10 @@ class MetricDefinition:
     #: (deals, work_orders) -> MetricResult
     compute: Callable[[Sequence[Deal], Sequence[WorkOrder]], MetricResult]
     missing_data_rule: str
+    #: True when the metric's meaning spans deal statuses, so a status filter must not
+    #: be applied before computing it. Win rate is the clear case: filtering to won
+    #: deals first makes it 100% by construction. Sector and period filters still apply.
+    spans_statuses: bool = False
 
 
 # --------------------------------------------------------------------------------
@@ -778,6 +782,7 @@ _DEFINITIONS: tuple[MetricDefinition, ...] = (
         "stage_distribution", "Deals by stage", "Count of deals at each pipeline stage.",
         Unit.COUNT, ("stage",), ("deals",), _stage_distribution,
         "Deals with no stage are counted separately as unrecorded.",
+        spans_statuses=True,
     ),
     MetricDefinition(
         "pipeline_by_sector", "Open pipeline by sector",
@@ -795,6 +800,7 @@ _DEFINITIONS: tuple[MetricDefinition, ...] = (
         "win_rate", "Win rate", "Won deals as a share of deals with a settled outcome.",
         Unit.PERCENT, ("stage",), ("deals",), _win_rate,
         "Open and on-hold deals are excluded from the denominator, not counted as losses.",
+        spans_statuses=True,
     ),
     MetricDefinition(
         "deal_concentration", "Pipeline concentration",

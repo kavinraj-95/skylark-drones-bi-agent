@@ -207,8 +207,17 @@ def _system_prompt(result: AnalysisResult) -> str:
     return SYSTEM_PROMPT
 
 
-def respond(question: str, result: AnalysisResult, llm: LLMClient | None) -> str:
-    """Produce the founder-facing answer."""
+def respond(
+    question: str,
+    result: AnalysisResult,
+    llm: LLMClient | None,
+    notes: list[str] | None = None,
+) -> str:
+    """Produce the founder-facing answer.
+
+    Appends to `notes` on degradation. The deterministic renderer produces the same
+    numbers in plainer prose, so a fallback costs readability and nothing else.
+    """
     if llm is not None:
         try:
             return llm.prose(
@@ -216,6 +225,12 @@ def respond(question: str, result: AnalysisResult, llm: LLMClient | None) -> str
             )
         except LLMError as exc:
             log.warning("Falling back to deterministic response: %s", exc)
+            if notes is not None:
+                from .planner import _fallback_note
+
+                note = _fallback_note(exc)
+                if note not in notes:
+                    notes.append(note)
 
     return render_plain(result)
 

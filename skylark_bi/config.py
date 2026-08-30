@@ -148,7 +148,7 @@ def load_settings(*, require_llm: bool = True) -> Settings:
     else:
         provider = "gemini"
         llm_key = _secret("GEMINI_API_KEY")
-        llm_model = _secret("GEMINI_MODEL", "gemini-2.5-flash")
+        llm_model = _secret("GEMINI_MODEL", "gemini-flash-lite-latest")
         key_hint = (
             "GEMINI_API_KEY is not set. Create one free at https://aistudio.google.com/apikey"
         )

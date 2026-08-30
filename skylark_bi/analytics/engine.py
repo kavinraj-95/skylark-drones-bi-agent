@@ -57,9 +57,17 @@ class AnalysisResult:
 
 
 def _filter_deals(
-    deals: Sequence[Deal], plan: QueryPlan, period: Period | None
+    deals: Sequence[Deal],
+    plan: QueryPlan,
+    period: Period | None,
+    *,
+    apply_status: bool = True,
 ) -> tuple[list[Deal], list[str]]:
-    """Apply a plan's filters to deals, reporting what each one removed."""
+    """Apply a plan's filters to deals, reporting what each one removed.
+
+    `apply_status=False` keeps sector and period but drops the status filter, for
+    metrics whose definition spans statuses.
+    """
     notes: list[str] = []
     selected = list(deals)
 
@@ -67,7 +75,7 @@ def _filter_deals(
         wanted = set(plan.sectors)
         selected = [d for d in selected if d.sector.or_none() in wanted]
 
-    if plan.status:
+    if plan.status and apply_status:
         by_status = {
             "open": M.open_deals, "won": M.won_deals,
             "lost": M.lost_deals, "held": M.held_deals,
@@ -167,8 +175,24 @@ def execute(plan: QueryPlan, dataset: Dataset, quality: QualityReport) -> Analys
     if "work_orders" in plan.boards:
         result.assumptions.extend(wo_notes)
 
+    # Metrics whose meaning spans statuses see the sector/period slice without the
+    # status filter - otherwise "what is our win rate?" answered about won deals would
+    # be 100% by construction.
+    spanning = [n for n in plan.metrics if M.REGISTRY[n].spans_statuses]
+    deals_all_statuses = deals
+    if plan.status and spanning:
+        deals_all_statuses, _ = _filter_deals(
+            dataset.active_deals, plan, period, apply_status=False
+        )
+        result.assumptions.append(
+            f"Win rate and stage distribution are computed across all outcomes, "
+            f"ignoring the '{plan.status}' filter - restricting them to one outcome "
+            "would make the result true by definition."
+        )
+
     for name in plan.metrics:
-        result.metrics[name] = M.compute(name, deals, work_orders)
+        source = deals_all_statuses if M.REGISTRY[name].spans_statuses else deals
+        result.metrics[name] = M.compute(name, source, work_orders)
 
     # Pull in metric-level assumptions without repeating any.
     for metric in result.metrics.values():

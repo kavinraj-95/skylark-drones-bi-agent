@@ -277,3 +277,64 @@ class TestPipelineMatchesSource:
             if d.tentative_close_date.ok and d.tentative_close_date.value
         ]
         assert max(forecasts) > dataset.as_of
+
+
+class TestStatusFilterInteraction:
+    """A status filter must not make a status-spanning metric true by construction."""
+
+    def test_win_rate_ignores_a_won_filter(self, dataset, quality_report):
+        """"What's our win rate?" once returned 100% because the planner read "win" as
+        a status filter, leaving only won deals in the denominator."""
+        from skylark_bi.agent.plan import QueryPlan
+
+        plan = QueryPlan(
+            intent=Intent.REVENUE, metrics=("win_rate",), boards=("deals",), status="won"
+        )
+        result = execute(plan, dataset, quality_report)
+        win_rate = result.metrics["win_rate"]
+
+        assert win_rate.available
+        assert win_rate.value < 100.0
+        assert win_rate.context["lost"] > 0
+        assert any("true by definition" in a for a in result.assumptions)
+
+    def test_unfiltered_win_rate_is_identical(self, dataset, quality_report):
+        from skylark_bi.agent.plan import QueryPlan
+
+        filtered = execute(
+            QueryPlan(Intent.REVENUE, ("win_rate",), ("deals",), status="won"),
+            dataset, quality_report,
+        ).metrics["win_rate"]
+        unfiltered = execute(
+            QueryPlan(Intent.REVENUE, ("win_rate",), ("deals",)),
+            dataset, quality_report,
+        ).metrics["win_rate"]
+        assert filtered.value == pytest.approx(unfiltered.value)
+
+    def test_sector_filter_still_applies_to_spanning_metrics(self, dataset, quality_report):
+        """Only the status filter is dropped - sector and period must still bite."""
+        from skylark_bi.agent.plan import QueryPlan
+
+        scoped = execute(
+            QueryPlan(Intent.REVENUE, ("win_rate",), ("deals",),
+                      sectors=("Mining",), status="won"),
+            dataset, quality_report,
+        ).metrics["win_rate"]
+        overall = execute(
+            QueryPlan(Intent.REVENUE, ("win_rate",), ("deals",)),
+            dataset, quality_report,
+        ).metrics["win_rate"]
+        assert scoped.context["decided"] < overall.context["decided"]
+
+    def test_value_metrics_still_respect_status(self, dataset, quality_report):
+        from skylark_bi.agent.plan import QueryPlan
+
+        won_only = execute(
+            QueryPlan(Intent.REVENUE, ("deal_count",), ("deals",), status="won"),
+            dataset, quality_report,
+        ).metrics["deal_count"]
+        everything = execute(
+            QueryPlan(Intent.REVENUE, ("deal_count",), ("deals",)),
+            dataset, quality_report,
+        ).metrics["deal_count"]
+        assert won_only.value < everything.value
