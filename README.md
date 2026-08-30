@@ -267,7 +267,11 @@ if monday.com has never answered, there is nothing to serve and the app says so.
 enforce all of that (`test_no_hardcoded_data.py::TestSnapshotIsNotCommitted`).
 
 `setup/import/*.csv` are one-time import artifacts. The application never reads them,
-contains no CSV parsing at all, and a test enforces both.
+contains no CSV parsing at all, and a test enforces both. They are the masked sample
+data supplied with the assignment — deal names are cartoon characters, companies and
+owners are codes, and values are scaled — and they are kept here only so the monday.com
+boards can be reproduced and so the test suite can exercise the parsers against the
+real inconsistencies rather than invented ones.
 
 ---
 

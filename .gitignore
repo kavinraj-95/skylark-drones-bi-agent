@@ -8,6 +8,10 @@
 .cache/
 *.snapshot.json
 
+# The assignment brief is Skylark's own document, kept locally for reference but not
+# republished here.
+*.docx
+
 # python
 __pycache__/
 *.py[cod]
