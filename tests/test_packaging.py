@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import re
 import tomllib
+
+import pytest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -56,5 +58,21 @@ def test_python_version_is_pinned_to_one_version():
 
 
 def test_no_secrets_committed():
-    assert not (REPO / ".env").exists() or ".env" in (REPO / ".gitignore").read_text()
-    assert not (REPO / ".streamlit" / "secrets.toml").exists()
+    """Checks git, not the filesystem.
+
+    A developer running locally *should* have a .env, and may keep a
+    .streamlit/secrets.toml. Neither may ever be tracked. Asserting they do not exist
+    on disk would fail on any working machine while catching nothing that matters.
+    """
+    import subprocess
+
+    result = subprocess.run(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+        cwd=REPO, capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        pytest.skip("not a git repository")
+
+    tracked = set(result.stdout.splitlines())
+    assert ".env" not in tracked
+    assert ".streamlit/secrets.toml" not in tracked
