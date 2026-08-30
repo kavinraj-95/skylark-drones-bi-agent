@@ -1,0 +1,18 @@
+# secrets
+.env
+.streamlit/secrets.toml
+
+# Runtime snapshot cache. Written ONLY from a successful live monday.com API response,
+# at runtime. Never committed: an evaluator must never mistake cached live data for
+# hardcoded business data. See README "Data provenance".
+.cache/
+*.snapshot.json
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/

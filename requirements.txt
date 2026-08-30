@@ -1,0 +1,13 @@
+# Deployment manifest for Streamlit Community Cloud.
+#
+# Local development uses pyproject.toml + uv.lock (`uv sync --extra dev`). This file
+# exists because Streamlit Cloud's dependency detection is most reliable with a plain
+# requirements.txt, and a failed deploy is a worse outcome than a little duplication.
+#
+# The package itself needs no install step: `skylark_bi/` sits beside `app.py` at the
+# repo root, so it imports directly. tests/test_packaging.py asserts this file stays
+# in step with pyproject.toml.
+streamlit==1.41.1
+httpx==0.28.1
+pydantic==2.10.4
+google-genai>=1.0
