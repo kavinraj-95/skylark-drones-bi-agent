@@ -22,6 +22,7 @@ from skylark_bi.monday.errors import MondayError
 st.set_page_config(page_title="Skylark BI Agent", page_icon="🛩️", layout="wide")
 
 SAMPLE_QUESTIONS = [
+    "What can you answer?",
     "How's our pipeline looking for the energy sector this quarter?",
     "Which sectors have the strongest pipeline?",
     "What is our current weighted pipeline?",

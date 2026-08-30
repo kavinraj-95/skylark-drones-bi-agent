@@ -49,6 +49,9 @@ def resolve(
         restatement=intent.restatement,
     )
 
+    if intent.intent is Intent.CAPABILITIES:
+        return plan
+
     if intent.intent is Intent.UNSUPPORTED:
         plan.clarifying_question = (
             intent.clarifying_question

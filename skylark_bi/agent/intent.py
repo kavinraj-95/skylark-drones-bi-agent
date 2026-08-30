@@ -31,6 +31,10 @@ class Intent(str, Enum):
     RISK = "risk"
     LEADERSHIP_UPDATE = "leadership_update"
     DATA_QUALITY = "data_quality"
+    #: A question about the agent itself - what it can answer, how to use it. Also the
+    #: right response to a question that cannot be placed at all, since listing what is
+    #: possible is more useful than a bare refusal.
+    CAPABILITIES = "capabilities"
     #: The question is about this dataset but not something we can compute.
     UNSUPPORTED = "unsupported"
 

@@ -38,6 +38,9 @@ Choosing `intent`:
 - risk              - risks, concentration, exposure, what could go wrong
 - leadership_update - a general update, board/investor summary, "how are we doing"
 - data_quality      - questions about the data itself, its gaps or reliability
+- capabilities      - questions about YOU: what you can do, what you can be asked,
+                      how to use you, or anything you cannot confidently place in
+                      another category
 - unsupported       - anything this data cannot answer (headcount, marketing, costs,
                       individual people's performance, anything not about deals or
                       work orders)
@@ -114,6 +117,10 @@ def _fallback_note(exc: LLMError) -> str:
 #: Ordered most-specific first: cross-board phrasing mentions both sales and ops, so
 #: it must be tested before either of them individually.
 _INTENT_PATTERNS: tuple[tuple[Intent, tuple[str, ...]], ...] = (
+    (Intent.CAPABILITIES, ("what can you do", "what do you do", "what are you supposed",
+                           "what can i ask", "what can you answer", "how do i use",
+                           "what questions", "your capabilities", "help me", "/help",
+                           "who are you", "what are you")),
     (Intent.DATA_QUALITY, ("data quality", "data issue", "missing data", "how reliable",
                            "how complete", "caveat", "trust the data")),
     (Intent.LEADERSHIP_UPDATE, ("leadership update", "board update", "investor update",
@@ -179,10 +186,10 @@ def keyword_intent(question: str) -> QueryIntent:
             restatement=question.strip()[:400],
         )
 
-    intent = Intent.PIPELINE_HEALTH
+    matched: Intent | None = None
     for candidate, keywords in _INTENT_PATTERNS:
         if any(keyword in text for keyword in keywords):
-            intent = candidate
+            matched = candidate
             break
 
     time_expression = None
@@ -218,8 +225,19 @@ def keyword_intent(question: str) -> QueryIntent:
 
     status_term = next((w for w in _STATUS_WORDS if re.search(rf"\b{w}\b", text)), None)
 
+    if matched is None:
+        # Nothing matched. Falling back to a pipeline answer here was a real bug:
+        # "What are you supposed to do?" came back as a wall of pipeline figures.
+        # A bare sector or period still implies a business question ("how's mining
+        # doing?"); anything else is better served by explaining what can be asked.
+        matched = (
+            Intent.PIPELINE_HEALTH
+            if (sector_term or time_expression)
+            else Intent.CAPABILITIES
+        )
+
     return QueryIntent(
-        intent=intent,
+        intent=matched,
         sector_term=sector_term,
         time_expression=time_expression,
         status_term=status_term,

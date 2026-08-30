@@ -53,6 +53,7 @@ INTENT_METRICS: dict[Intent, tuple[str, ...]] = {
         "sector_sales_vs_ops",
     ),
     Intent.DATA_QUALITY: (),
+    Intent.CAPABILITIES: (),
     Intent.UNSUPPORTED: (),
 }
 
@@ -68,6 +69,7 @@ INTENT_BOARDS: dict[Intent, tuple[str, ...]] = {
     Intent.RISK: ("deals", "work_orders"),
     Intent.LEADERSHIP_UPDATE: ("deals", "work_orders"),
     Intent.DATA_QUALITY: ("deals", "work_orders"),
+    Intent.CAPABILITIES: (),
     Intent.UNSUPPORTED: (),
 }
 

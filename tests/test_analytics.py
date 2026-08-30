@@ -338,3 +338,68 @@ class TestStatusFilterInteraction:
             dataset, quality_report,
         ).metrics["deal_count"]
         assert won_only.value < everything.value
+
+
+class TestCapabilityQuestions:
+    """Questions about the agent must not be answered with business figures.
+
+    Regression: "What are you supposed to do?" returned a wall of pipeline numbers,
+    because the keyword fallback treated anything unrecognised as a pipeline question.
+    """
+
+    @pytest.mark.parametrize("question", [
+        "What are you supposed to do?",
+        "What can you do?",
+        "what can I ask you",
+        "help me",
+        "asdfgh qwerty",           # unplaceable: explain, do not guess
+    ])
+    def test_routed_to_capabilities(self, question):
+        from skylark_bi.agent.planner import keyword_intent
+
+        assert keyword_intent(question).intent is Intent.CAPABILITIES
+
+    @pytest.mark.parametrize("question,expected", [
+        ("How is mining doing?", Intent.PIPELINE_HEALTH),      # bare sector still counts
+        ("What about last quarter?", Intent.PIPELINE_HEALTH),  # bare period still counts
+        ("How many active work orders do we have?", Intent.OPERATIONS),
+        ("How many people work in Bangalore?", Intent.UNSUPPORTED),
+    ])
+    def test_real_questions_still_route_correctly(self, question, expected):
+        from skylark_bi.agent.planner import keyword_intent
+
+        assert keyword_intent(question).intent is expected
+
+    def test_capabilities_plan_computes_nothing(self, dataset):
+        intent = QueryIntent(intent=Intent.CAPABILITIES, restatement="what can you do")
+        plan = resolve(intent, dataset, fiscal_start_month=4)
+        assert plan.metrics == ()
+        assert not plan.needs_clarification
+
+    def test_description_is_derived_from_the_live_data(self, dataset):
+        """It must describe the data in front of it, not a hardcoded snapshot."""
+        from skylark_bi.agent.capabilities import describe
+
+        text = describe(dataset)
+        assert str(len(dataset.active_deals)) in text
+        assert str(len(dataset.active_work_orders)) in text
+        assert dataset.as_of.isoformat() in text
+        # Sectors listed are the ones actually present.
+        for sector in {d.sector.value for d in dataset.active_deals if d.sector.value}:
+            assert str(sector) in text
+
+    def test_description_states_the_key_limitations(self, dataset):
+        from skylark_bi.agent.capabilities import describe
+
+        text = describe(dataset).lower()
+        assert "read-only" in text
+        assert "no reliable key" in text          # the cross-board limitation
+        assert "never does the arithmetic" in text
+
+    def test_no_business_figures_in_a_capability_answer(self, dataset, quality_report):
+        """The failure being prevented: pipeline totals in an 'about you' answer."""
+        from skylark_bi.agent.capabilities import describe
+
+        text = describe(dataset)
+        pipeline = M.compute("open_pipeline_value", dataset.active_deals, [])
+        assert pipeline.formatted() not in text

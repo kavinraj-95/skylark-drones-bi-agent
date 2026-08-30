@@ -31,6 +31,8 @@ from ..ingest.entities import Dataset
 from ..monday.client import BoardSnapshot, MondayClient
 from ..monday.errors import MondayError
 from ..quality.audit import QualityReport, audit
+from .capabilities import describe as describe_capabilities
+from .intent import Intent
 from .llm import LLMClient
 from .planner import plan_intent
 from .resolver import resolve
@@ -218,6 +220,15 @@ class BIService:
             fiscal_start_month=self._settings.fiscal_year_start_month,
             basis=PeriodBasis.FISCAL,
         )
+
+        if plan.intent is Intent.CAPABILITIES:
+            # Answered from the metric registry and the live dataset, so the
+            # description cannot drift from what the agent actually does.
+            return Answer(
+                question=question,
+                text=describe_capabilities(data.dataset),
+                notes=notes,
+            )
 
         if plan.needs_clarification:
             # Not cached: a clarification is a prompt to the user, not an answer.
