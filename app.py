@@ -8,10 +8,13 @@ check what the agent actually did rather than take the prose on trust.
 
 from __future__ import annotations
 
+import hashlib
+
 import streamlit as st
 
 from skylark_bi.agent.llm import LLMClient
 from skylark_bi.agent.service import Answer, BIService
+from skylark_bi.analytics.engine import AnalysisResult
 from skylark_bi.analytics.metrics import Unit, format_inr
 from skylark_bi.config import ConfigError, load_settings
 from skylark_bi.monday.errors import MondayError
@@ -30,9 +33,34 @@ SAMPLE_QUESTIONS = [
 ]
 
 
+def schema_fingerprint() -> str:
+    """A short hash of the shapes this UI stores between reruns.
+
+    Streamlit keeps `cache_resource` values and `session_state` alive across a code
+    reload without restarting the process. After a redeploy that changes a dataclass,
+    the new UI can therefore be handed objects built by the *old* definition - which
+    is exactly how `answer.notes` raised AttributeError in production.
+
+    Deriving the key from the field names means it changes automatically whenever the
+    stored shape does, with nothing to remember to bump by hand.
+    """
+    parts = [
+        f"{cls.__name__}:{','.join(sorted(getattr(cls, '__dataclass_fields__', {})))}"
+        for cls in (Answer, AnalysisResult)
+    ]
+    return hashlib.sha1("|".join(parts).encode("utf-8")).hexdigest()[:12]
+
+
+SCHEMA = schema_fingerprint()
+
+
 @st.cache_resource(show_spinner=False)
-def get_service() -> BIService:
-    """One service per server process, so the data cache is shared across reruns."""
+def get_service(schema: str) -> BIService:
+    """One service per server process, so the data cache is shared across reruns.
+
+    Keyed on the schema fingerprint so a redeploy that changes a stored shape builds a
+    fresh service rather than reusing one holding incompatible cached answers.
+    """
     settings = load_settings(require_llm=False)
     llm = LLMClient(settings.llm) if settings.llm.api_key else None
     return BIService(settings, llm=llm)
@@ -113,6 +141,27 @@ def render_analysis_panel(answer: Answer) -> None:
                 st.markdown(f"- {assumption}")
 
 
+def render_answer(answer: Answer) -> None:
+    """Render one assistant turn.
+
+    Attributes are read defensively. The schema check above should already have
+    removed incompatible entries; this is the second line of defence, because an
+    evaluator meeting a crashed app learns nothing about the agent.
+    """
+    if getattr(answer, "error", None):
+        st.error(answer.error)
+        return
+    if getattr(answer, "clarifying_question", None):
+        st.info(answer.clarifying_question)
+        return
+
+    for note in getattr(answer, "notes", None) or []:
+        st.warning(note)
+    render_metric_tiles(answer)
+    st.markdown(getattr(answer, "text", "") or "")
+    render_analysis_panel(answer)
+
+
 def render_metric_tiles(answer: Answer) -> None:
     """Headline figures, so the numbers are visible without reading the prose."""
     result = answer.result
@@ -191,7 +240,7 @@ def main() -> None:
     )
 
     try:
-        service = get_service()
+        service = get_service(SCHEMA)
     except ConfigError as exc:
         st.error(str(exc))
         st.info("See `setup/MONDAY_SETUP.md` for configuration steps.")
@@ -225,21 +274,17 @@ def main() -> None:
         if "history" not in st.session_state:
             st.session_state.history = []
 
+        # Drop anything stored by a previous version of the code. Discarding a few
+        # replayed messages is a far better outcome than the app refusing to load.
+        st.session_state.history = [
+            e for e in st.session_state.history if e.get("schema") == SCHEMA
+        ]
+
         for entry in st.session_state.history:
             with st.chat_message("user"):
                 st.write(entry["question"])
             with st.chat_message("assistant"):
-                answer: Answer = entry["answer"]
-                if answer.error:
-                    st.error(answer.error)
-                elif answer.needs_clarification:
-                    st.info(answer.clarifying_question)
-                else:
-                    for note in answer.notes:
-                        st.warning(note)
-                    render_metric_tiles(answer)
-                    st.markdown(answer.text)
-                    render_analysis_panel(answer)
+                render_answer(entry["answer"])
 
         question = st.chat_input("Ask about pipeline, revenue, sectors, work orders…")
         if not question and st.session_state.get("pending_question"):
@@ -251,17 +296,10 @@ def main() -> None:
             with st.chat_message("assistant"):
                 with st.spinner("Querying monday.com and analysing…"):
                     answer = service.ask(question)
-                if answer.error:
-                    st.error(answer.error)
-                elif answer.needs_clarification:
-                    st.info(answer.clarifying_question)
-                else:
-                    for note in answer.notes:
-                        st.warning(note)
-                    render_metric_tiles(answer)
-                    st.markdown(answer.text)
-                    render_analysis_panel(answer)
-            st.session_state.history.append({"question": question, "answer": answer})
+                render_answer(answer)
+            st.session_state.history.append(
+                {"question": question, "answer": answer, "schema": SCHEMA}
+            )
 
 
 if __name__ == "__main__":

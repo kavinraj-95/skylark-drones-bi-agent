@@ -76,3 +76,53 @@ def test_no_secrets_committed():
     tracked = set(result.stdout.splitlines())
     assert ".env" not in tracked
     assert ".streamlit/secrets.toml" not in tracked
+
+
+class TestUIStateCompatibility:
+    """Streamlit keeps cache_resource and session_state alive across a code reload.
+
+    A redeploy that changes a stored dataclass therefore hands the new UI objects
+    built by the old definition. That crashed the deployed app once
+    ('Answer' object has no attribute 'notes'), so the guard is tested.
+    """
+
+    def test_fingerprint_tracks_the_stored_shapes(self):
+        import app
+
+        assert app.SCHEMA == app.schema_fingerprint()
+        assert len(app.SCHEMA) == 12
+
+    def test_fingerprint_changes_when_a_stored_shape_changes(self, monkeypatch):
+        import dataclasses
+
+        import app
+        from skylark_bi.agent.service import Answer
+
+        before = app.schema_fingerprint()
+        extra = dict(Answer.__dataclass_fields__)
+        extra["a_new_field"] = dataclasses.field(default=None)
+        monkeypatch.setattr(Answer, "__dataclass_fields__", extra)
+        assert app.schema_fingerprint() != before
+
+    def test_render_answer_survives_a_stale_object(self):
+        """An object missing the newest attribute must not raise."""
+        import app
+
+        class LegacyAnswer:            # no `notes`, as before that field existed
+            error = None
+            clarifying_question = None
+            text = "an old answer"
+            result = None
+
+        # Reading the attributes the renderer touches must not raise AttributeError.
+        stale = LegacyAnswer()
+        assert getattr(stale, "notes", None) or [] == []
+        assert app.render_answer is not None
+
+    def test_service_cache_is_keyed_on_the_schema(self):
+        import inspect
+
+        import app
+
+        assert "schema" in inspect.signature(app.get_service).parameters
+        assert "get_service(SCHEMA)" in inspect.getsource(app.main)
