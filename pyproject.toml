@@ -2,7 +2,9 @@
 name = "skylark-bi"
 version = "0.1.0"
 description = "Business intelligence agent over monday.com Work Orders and Deals boards"
-requires-python = ">=3.12,<3.13"
+# Lower bound only. `.python-version` pins 3.12 for local development, but an
+# upper bound would hard-fail a hosted install if the platform picks 3.13.
+requires-python = ">=3.12"
 dependencies = [
     "streamlit==1.41.1",
     "httpx==0.28.1",
